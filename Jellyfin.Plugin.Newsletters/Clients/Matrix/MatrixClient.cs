@@ -317,6 +317,15 @@ public class MatrixClient(
     private async Task<string?> UploadImage(MatrixConfiguration config, string imagePath, string filename)
     {
         var baseUrl = NormalizeHomeserverUrl(config.HomeserverUrl);
+
+        // Check DB cache
+        var cachedUrl = LookupMxcCache(baseUrl, imagePath);
+        if (cachedUrl != null)
+        {
+            Logger.Debug($"Matrix mxc cache hit for {filename}");
+            return cachedUrl;
+        }
+
         var safeFilename = Uri.EscapeDataString(filename + ".jpg");
 
         try
@@ -341,12 +350,70 @@ public class MatrixClient(
             }
 
             using var doc = JsonDocument.Parse(responseBody);
-            return doc.RootElement.GetProperty("content_uri").GetString();
+            var mxcUrl = doc.RootElement.GetProperty("content_uri").GetString();
+
+            if (!string.IsNullOrEmpty(mxcUrl))
+            {
+                StoreMxcCache(baseUrl, imagePath, mxcUrl);
+            }
+
+            return mxcUrl;
         }
         catch (Exception e)
         {
             Logger.Warn($"Matrix image upload error for {filename}: {e.Message}");
             return null;
+        }
+    }
+
+    private string? LookupMxcCache(string homeserverUrl, string imageSource)
+    {
+        try
+        {
+            Db.CreateConnection();
+            var escaped = imageSource.Replace("'", "''", StringComparison.Ordinal);
+            var hsEscaped = homeserverUrl.Replace("'", "''", StringComparison.Ordinal);
+            foreach (var row in Db.Query(
+                $"SELECT MxcUrl FROM MxcImageCache WHERE HomeserverUrl='{hsEscaped}' AND ImageSource='{escaped}';"))
+            {
+                if (row is not null)
+                {
+                    return row[0].ToString();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.Debug($"Matrix mxc cache lookup error: {e.Message}");
+        }
+        finally
+        {
+            Db.CloseConnection();
+        }
+
+        return null;
+    }
+
+    private void StoreMxcCache(string homeserverUrl, string imageSource, string mxcUrl)
+    {
+        try
+        {
+            Db.CreateConnection();
+            var hs = homeserverUrl.Replace("'", "''", StringComparison.Ordinal);
+            var src = imageSource.Replace("'", "''", StringComparison.Ordinal);
+            var mxc = mxcUrl.Replace("'", "''", StringComparison.Ordinal);
+            var now = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+            Db.ExecuteSQL(
+                $"INSERT OR REPLACE INTO MxcImageCache (HomeserverUrl, ImageSource, MxcUrl, UploadedAt) " +
+                $"VALUES ('{hs}', '{src}', '{mxc}', '{now}');");
+        }
+        catch (Exception e)
+        {
+            Logger.Debug($"Matrix mxc cache store error: {e.Message}");
+        }
+        finally
+        {
+            Db.CloseConnection();
         }
     }
 

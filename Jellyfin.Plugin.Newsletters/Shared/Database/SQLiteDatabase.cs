@@ -74,6 +74,7 @@ public class SQLiteDatabase
         logger.Debug("Creating Tables...");
         string[] tableNames = { "CurrRunData", "CurrNewsletterData", "ArchiveData" };
         CreateTables(tableNames);
+        CreateMxcImageCacheTable();
         logger.Debug("Done Init of tables");
     }
 
@@ -182,6 +183,18 @@ public class SQLiteDatabase
         {
             logger.Debug("Database lock file does not exist. Database is not use: " + dbLockPath);
         }
+    }
+
+    private void CreateMxcImageCacheTable()
+    {
+        ExecuteSQL(
+            "CREATE TABLE IF NOT EXISTS MxcImageCache (" +
+            "HomeserverUrl TEXT NOT NULL," +
+            "ImageSource TEXT NOT NULL," +
+            "MxcUrl TEXT NOT NULL," +
+            "UploadedAt TEXT NOT NULL," +
+            "PRIMARY KEY (HomeserverUrl, ImageSource)" +
+            ");");
     }
 
     private List<string> GetTableColumns(string tableName)
