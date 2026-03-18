@@ -70,29 +70,38 @@ public class MatrixClient(
 
         try
         {
-            var builder = new MatrixMessageBuilder(Logger, Db, LibraryManager, Array.Empty<JsonFileObj>());
-            var (html, plainText) = builder.BuildTestMessage(config);
+            bool success;
 
-            // Upload test poster images and replace placeholders with mxc:// URLs
-            if (config.ThumbnailEnabled)
+            if (config.MessageMode == "multi")
             {
-                for (int i = 0; i < MatrixMessageBuilder.TestPosterUrls.Count; i++)
+                success = await SendMultiTestMessage(config).ConfigureAwait(false);
+            }
+            else
+            {
+                var builder = new MatrixMessageBuilder(Logger, Db, LibraryManager, Array.Empty<JsonFileObj>());
+                var (html, plainText) = builder.BuildTestMessage(config);
+
+                // Upload test poster images and replace placeholders with mxc:// URLs
+                if (config.ThumbnailEnabled)
                 {
-                    var (title, url) = MatrixMessageBuilder.TestPosterUrls[i];
-                    var placeholder = $"{{{{POSTER:{i}}}}}";
-                    var mxcUrl = await DownloadAndUploadImage(config, url, title).ConfigureAwait(false);
-                    if (!string.IsNullOrEmpty(mxcUrl))
+                    for (int i = 0; i < MatrixMessageBuilder.TestPosterUrls.Count; i++)
                     {
-                        html = html.Replace(placeholder, $"<img src=\"{mxcUrl}\" alt=\"\" width=\"100\">", StringComparison.Ordinal);
-                    }
-                    else
-                    {
-                        html = html.Replace(placeholder, string.Empty, StringComparison.Ordinal);
+                        var (title, url) = MatrixMessageBuilder.TestPosterUrls[i];
+                        var placeholder = $"{{{{POSTER:{i}}}}}";
+                        var mxcUrl = await DownloadAndUploadImage(config, url, title).ConfigureAwait(false);
+                        if (!string.IsNullOrEmpty(mxcUrl))
+                        {
+                            html = html.Replace(placeholder, $"<img src=\"{mxcUrl}\" alt=\"\" width=\"100\">", StringComparison.Ordinal);
+                        }
+                        else
+                        {
+                            html = html.Replace(placeholder, string.Empty, StringComparison.Ordinal);
+                        }
                     }
                 }
-            }
 
-            var success = await SendToRooms(config, html, plainText).ConfigureAwait(false);
+                success = await SendToRooms(config, html, plainText).ConfigureAwait(false);
+            }
 
             if (success)
             {
@@ -159,11 +168,18 @@ public class MatrixClient(
                     continue;
                 }
 
-                // Upload images and build full newsletter HTML
-                var (fullHtml, fullPlainText) = BuildFullNewsletter(matrixConfig, itemMessages);
-
-                var success = SendToRooms(matrixConfig, fullHtml, fullPlainText)
-                    .GetAwaiter().GetResult();
+                bool success;
+                if (matrixConfig.MessageMode == "multi")
+                {
+                    success = SendMultiMessage(matrixConfig, itemMessages)
+                        .GetAwaiter().GetResult();
+                }
+                else
+                {
+                    var (fullHtml, fullPlainText) = BuildFullNewsletter(matrixConfig, itemMessages);
+                    success = SendToRooms(matrixConfig, fullHtml, fullPlainText)
+                        .GetAwaiter().GetResult();
+                }
 
                 if (success)
                 {
@@ -276,6 +292,150 @@ public class MatrixClient(
         plain.AppendLine("Sent from Jellyfin");
 
         return (html.ToString(), plain.ToString());
+    }
+
+    private async Task<bool> SendMultiMessage(
+        MatrixConfiguration config,
+        System.Collections.ObjectModel.ReadOnlyCollection<(string Html, string PlainText, string? ImagePath, string UniqueImageName)> itemMessages)
+    {
+        var anySuccess = false;
+
+        // Header
+        var headerSuccess = await SendToRooms(config, "<h2>🎬 Jellyfin Newsletter</h2>", "Jellyfin Newsletter").ConfigureAwait(false);
+        anySuccess |= headerSuccess;
+        await Task.Delay(100).ConfigureAwait(false);
+
+        // Each item as m.image or m.text
+        foreach (var (itemHtml, itemPlain, imagePath, uniqueName) in itemMessages)
+        {
+            if (!string.IsNullOrEmpty(imagePath) && System.IO.File.Exists(imagePath))
+            {
+                var mxcUrl = await UploadImage(config, imagePath!, uniqueName).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(mxcUrl))
+                {
+                    var imgSuccess = await SendImageToRooms(config, mxcUrl, uniqueName + ".jpg", itemHtml, itemPlain).ConfigureAwait(false);
+                    anySuccess |= imgSuccess;
+                }
+                else
+                {
+                    // Upload failed — send as text
+                    var textSuccess = await SendToRooms(config, itemHtml, itemPlain).ConfigureAwait(false);
+                    anySuccess |= textSuccess;
+                }
+            }
+            else
+            {
+                // No poster — send as text
+                var textSuccess = await SendToRooms(config, itemHtml, itemPlain).ConfigureAwait(false);
+                anySuccess |= textSuccess;
+            }
+
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+
+        // Footer
+        await SendToRooms(config, "<p>🍿 <i>Sent from Jellyfin</i></p>", "Sent from Jellyfin").ConfigureAwait(false);
+
+        return anySuccess;
+    }
+
+    private async Task<bool> SendMultiTestMessage(MatrixConfiguration config)
+    {
+        var builder = new MatrixMessageBuilder(Logger, Db, LibraryManager, Array.Empty<JsonFileObj>());
+        var testItems = builder.BuildTestItems(config);
+        var anySuccess = false;
+
+        // Header
+        var headerSuccess = await SendToRooms(config, "<h2>🎬 Jellyfin Newsletter</h2>", "Jellyfin Newsletter").ConfigureAwait(false);
+        anySuccess |= headerSuccess;
+        await Task.Delay(100).ConfigureAwait(false);
+
+        // Each test item
+        for (int i = 0; i < testItems.Count; i++)
+        {
+            var (html, plain) = testItems[i];
+            string? mxcUrl = null;
+
+            if (config.ThumbnailEnabled && i < MatrixMessageBuilder.TestPosterUrls.Count)
+            {
+                var (title, url) = MatrixMessageBuilder.TestPosterUrls[i];
+                mxcUrl = await DownloadAndUploadImage(config, url, title).ConfigureAwait(false);
+            }
+
+            if (!string.IsNullOrEmpty(mxcUrl))
+            {
+                var imgSuccess = await SendImageToRooms(config, mxcUrl, $"test_{i}.jpg", html, plain).ConfigureAwait(false);
+                anySuccess |= imgSuccess;
+            }
+            else
+            {
+                var textSuccess = await SendToRooms(config, html, plain).ConfigureAwait(false);
+                anySuccess |= textSuccess;
+            }
+
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+
+        // Footer
+        await SendToRooms(config, "<p>🍿 <i>Sent from Jellyfin</i></p>", "Sent from Jellyfin").ConfigureAwait(false);
+
+        return anySuccess;
+    }
+
+    private async Task<bool> SendImageToRooms(MatrixConfiguration config, string mxcUrl, string filename, string captionHtml, string captionPlain)
+    {
+        var baseUrl = NormalizeHomeserverUrl(config.HomeserverUrl);
+        var msgType = ValidateMsgType(config.MsgType);
+        var roomIds = config.RoomIds
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var anySuccess = false;
+
+        foreach (var roomId in roomIds)
+        {
+            await TryJoinRoom(config, baseUrl, roomId).ConfigureAwait(false);
+
+            var txnId = Guid.NewGuid().ToString();
+            var encodedRoomId = Uri.EscapeDataString(roomId);
+            var url = $"{baseUrl}/_matrix/client/v3/rooms/{encodedRoomId}/send/m.room.message/{txnId}";
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                msgtype = "m.image",
+                filename = filename,
+                body = captionPlain,
+                format = "org.matrix.custom.html",
+                formatted_body = captionHtml,
+                url = mxcUrl,
+                info = new { mimetype = "image/jpeg" },
+            });
+
+            try
+            {
+                var request = new HttpRequestMessage(HttpMethod.Put, url);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.AccessToken);
+                request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+                var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Logger.Info($"Matrix image message sent to {roomId}");
+                    anySuccess = true;
+                }
+                else
+                {
+                    Logger.Error($"Matrix image send to {roomId} failed ({response.StatusCode}): {responseBody}");
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.Error($"Matrix image send to {roomId} error: {e.Message}");
+            }
+        }
+
+        return anySuccess;
     }
 
     private async Task<string?> DownloadAndUploadImage(MatrixConfiguration config, string imageUrl, string filename)

@@ -1000,6 +1000,7 @@
                     AccessToken: '',
                     RoomIds: '',
                     MsgType: 'm.text',
+                    MessageMode: 'single',
                     DescriptionEnabled: true,
                     ThumbnailEnabled: true,
                     RatingEnabled: true,
@@ -1052,6 +1053,7 @@
                 config.AccessToken = document.getElementById('matrix-accesstoken-' + id).value;
                 config.RoomIds = document.getElementById('matrix-roomids-' + id).value;
                 config.MsgType = document.getElementById('matrix-msgtype-' + id).value;
+                config.MessageMode = document.getElementById('matrix-messagemode-' + id).value;
                 config.DescriptionEnabled = document.getElementById('matrix-desc-' + id).checked;
                 config.ThumbnailEnabled = document.getElementById('matrix-thumb-' + id).checked;
                 config.RatingEnabled = document.getElementById('matrix-rating-' + id).checked;
@@ -1121,6 +1123,13 @@
                     html += '      <select id="matrix-msgtype-' + config.Id + '" is="emby-select" onchange="updateMatrixConfigFromUI(\'' + config.Id + '\')">';
                     html += '        <option value="m.text"' + (config.MsgType === 'm.text' ? ' selected' : '') + '>m.text — Sends notifications to room members</option>';
                     html += '        <option value="m.notice"' + (config.MsgType === 'm.notice' ? ' selected' : '') + '>m.notice — Silent, no notifications (typical for bots)</option>';
+                    html += '      </select>';
+                    html += '    </div>';
+                    html += '    <div class="inputContainer">';
+                    html += '      <label class="inputLabel inputLabelUnfocused">Message Mode:</label>';
+                    html += '      <select id="matrix-messagemode-' + config.Id + '" is="emby-select" onchange="updateMatrixConfigFromUI(\'' + config.Id + '\')">';
+                    html += '        <option value="single"' + (config.MessageMode === 'single' ? ' selected' : '') + '>Single message — One rich HTML message (best for Element Web)</option>';
+                    html += '        <option value="multi"' + (config.MessageMode === 'multi' ? ' selected' : '') + '>One per item — Image + caption per item (best for Element X / mobile)</option>';
                     html += '      </select>';
                     html += '    </div>';
                     html += getLibrarySelectionHtml(config.Id, 'matrix', config.SelectedSeriesLibraries, config.SelectedMoviesLibraries);

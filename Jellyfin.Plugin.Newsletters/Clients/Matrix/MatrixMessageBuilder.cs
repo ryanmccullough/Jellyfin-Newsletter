@@ -139,6 +139,73 @@ public class MatrixMessageBuilder(
     }
 
     /// <summary>
+    /// Builds individual test items for multi-message mode (no header/footer/poster placeholders).
+    /// </summary>
+    /// <param name="config">The Matrix configuration.</param>
+    /// <returns>List of (html, plainText) tuples, one per test item.</returns>
+    public ReadOnlyCollection<(string Html, string PlainText)> BuildTestItems(MatrixConfiguration config)
+    {
+        var items = new List<(string Html, string PlainText)>();
+
+        // Dune
+        var h1 = new StringBuilder();
+        var p1 = new StringBuilder();
+        h1.Append("<b><a href=\"https://jellyfin.example.com/web/index.html#/details?id=test1\">Dune: Part Two</a></b><br>");
+        h1.Append("2024 • 166 min • PG-13 • ⭐ 8.3<br>");
+        h1.Append("🎬 <b>Added to Movies</b>");
+        if (config.DescriptionEnabled)
+        {
+            h1.Append("<br><br><i>Paul Atreides unites with the Fremen while on a warpath of revenge against the conspirators who destroyed his family.</i>");
+        }
+
+        p1.AppendLine("Dune: Part Two (2024)");
+        p1.AppendLine("Added to Movies · 8.3 · PG-13 · 166 min");
+        items.Add((h1.ToString(), p1.ToString()));
+
+        // Shogun
+        var h2 = new StringBuilder();
+        var p2 = new StringBuilder();
+        h2.Append("<b><a href=\"https://jellyfin.example.com/web/index.html#/details?id=test2\">Shogun</a></b><br>");
+        h2.Append("2024 • TV-MA • ⭐ 8.7<br>");
+        h2.Append("🎬 <b>Added to TV Shows</b><br>");
+        if (config.EpisodesEnabled)
+        {
+            h2.Append("📺 Season: 1 - Eps. 1 - 10");
+        }
+
+        if (config.DescriptionEnabled)
+        {
+            h2.Append("<br><br><i>When a mysterious European ship is found marooned in a nearby fishing village, Lord Yoshii Toranaga discovers secrets that could tip the balance of power and devastate his enemies.</i>");
+        }
+
+        p2.AppendLine("Shogun (2024)");
+        p2.AppendLine("Added to TV Shows · 8.7 · TV-MA");
+        items.Add((h2.ToString(), p2.ToString()));
+
+        // The Bear
+        var h3 = new StringBuilder();
+        var p3 = new StringBuilder();
+        h3.Append("<b><a href=\"https://jellyfin.example.com/web/index.html#/details?id=test3\">The Bear</a></b><br>");
+        h3.Append("2022 • TV-MA • ⭐ 8.6<br>");
+        h3.Append("🔄 <b>Updated in TV Shows</b><br>");
+        if (config.EpisodesEnabled)
+        {
+            h3.Append("📺 Season: 3 - Eps. 1 - 10");
+        }
+
+        if (config.DescriptionEnabled)
+        {
+            h3.Append("<br><br><i>A young chef from the fine dining world returns to Chicago to run his family's sandwich shop.</i>");
+        }
+
+        p3.AppendLine("The Bear (2022)");
+        p3.AppendLine("Updated in TV Shows · 8.6 · TV-MA");
+        items.Add((h3.ToString(), p3.ToString()));
+
+        return items.AsReadOnly();
+    }
+
+    /// <summary>
     /// Builds messages from current newsletter data.
     /// </summary>
     /// <param name="systemId">The Jellyfin system ID for building URLs.</param>

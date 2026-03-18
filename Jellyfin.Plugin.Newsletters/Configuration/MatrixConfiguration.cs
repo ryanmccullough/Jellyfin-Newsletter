@@ -39,6 +39,11 @@ public class MatrixConfiguration : INewsletterConfiguration
     public string MsgType { get; set; } = "m.text";
 
     /// <summary>
+    /// Gets or sets the message mode: "single" (one rich HTML message) or "multi" (one image per item with captions).
+    /// </summary>
+    public string MessageMode { get; set; } = "single";
+
+    /// <summary>
     /// Gets or sets a value indicating whether description should be visible in Matrix messages.
     /// </summary>
     public bool DescriptionEnabled { get; set; } = true;
